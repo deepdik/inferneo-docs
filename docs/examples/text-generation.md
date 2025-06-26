@@ -1,3 +1,61 @@
+# Text Generation Example
+
+This example demonstrates how to use Inferneo for basic text generation tasks.
+
+## Python Client Example
+
+```python
+from inferneo import InferneoClient
+
+client = InferneoClient("http://localhost:8000")
+
+prompt = "Explain the concept of artificial intelligence."
+
+response = client.completions.create(
+    model="meta-llama/Llama-2-7b-chat-hf",
+    prompt=prompt,
+    max_tokens=100,
+    temperature=0.7
+)
+
+print(response.choices[0].text)
+```
+
+## REST API Example
+
+```bash
+curl -X POST http://localhost:8000/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "meta-llama/Llama-2-7b-chat-hf",
+    "prompt": "Explain the concept of artificial intelligence.",
+    "max_tokens": 100
+  }'
+```
+
+## Batch Generation Example
+
+```python
+prompts = [
+    "What is machine learning?",
+    "Describe deep learning.",
+    "Explain neural networks."
+]
+
+responses = client.completions.create(
+    model="meta-llama/Llama-2-7b-chat-hf",
+    prompt=prompts,
+    max_tokens=100
+)
+
+for i, response in enumerate(responses.choices):
+    print(f"Prompt {i+1}: {response.text}")
+```
+
+## Next Steps
+- **[Chat Completion](chat-completion.md)**
+- **[Embeddings](embeddings.md)**
+
 # Text Generation Examples
 
 This guide provides comprehensive examples of text generation tasks using Inferneo.
