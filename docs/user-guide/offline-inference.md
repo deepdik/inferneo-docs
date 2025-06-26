@@ -366,4 +366,4 @@ def process_with_progress(prompts: List[str], model_id: str):
 
 - **[Online Serving](online-serving.md)** - Learn about real-time inference
 - **[Batching](batching.md)** - Optimize batch processing performance
-- **[Performance Tuning](developer-guide/performance-tuning.md)** - Advanced optimization techniques 
+- **Performance Tuning** - Advanced optimization techniques 

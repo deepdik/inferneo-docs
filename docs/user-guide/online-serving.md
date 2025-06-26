@@ -499,4 +499,4 @@ spec:
 
 - **[Offline Inference](offline-inference.md)** - Learn about batch processing
 - **[Batching](batching.md)** - Optimize request batching
-- **[Performance Tuning](developer-guide/performance-tuning.md)** - Advanced optimization techniques 
+- **Performance Tuning** - Advanced optimization techniques 

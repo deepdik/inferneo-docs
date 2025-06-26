@@ -1,106 +1,102 @@
 # Quantization
 
-This guide covers how to use quantization techniques in Inferneo to reduce model size and improve inference speed.
+Quantization is a technique that reduces the memory footprint and computational requirements of large language models by using lower precision data types.
 
 ## Overview
 
-Quantization reduces the precision of model weights and activations, providing:
-
-- **Reduced memory usage** for larger models
-- **Faster inference** with optimized operations
-- **Lower hardware requirements** for deployment
-- **Cost savings** in cloud deployments
+Quantization converts model weights from high precision (typically FP16 or FP32) to lower precision formats (INT8, INT4, etc.), significantly reducing memory usage while maintaining reasonable accuracy.
 
 ## Supported Quantization Methods
 
 ### AWQ (Activation-aware Weight Quantization)
 
-AWQ is an advanced quantization method that considers activation distributions:
+AWQ is an efficient quantization method that considers activation statistics during quantization:
 
-```bash
+```python
+from inferneo import Inferneo
+
 # Load model with AWQ quantization
-inferneo serve --model meta-llama/Llama-2-7b-chat-hf --quantization awq
+client = Inferneo("http://localhost:8000")
+
+# Use AWQ quantized model
+response = client.generate(
+    "Explain quantum computing",
+    model="meta-llama/Llama-2-7b-chat-hf-awq"
+)
 ```
 
 ### GPTQ (Gradient-based Post-training Quantization)
 
 GPTQ provides high-quality quantization with minimal accuracy loss:
 
-```bash
-# Load model with GPTQ quantization
-inferneo serve --model meta-llama/Llama-2-7b-chat-hf --quantization gptq
+```python
+from inferneo import Inferneo
+
+# Load GPTQ quantized model
+client = Inferneo("http://localhost:8000")
+
+# Use GPTQ quantized model
+response = client.generate(
+    "Write a story about AI",
+    model="meta-llama/Llama-2-7b-chat-hf-gptq"
+)
 ```
 
 ### SqueezeLLM
 
-SqueezeLLM offers efficient quantization for large language models:
-
-```bash
-# Load model with SqueezeLLM quantization
-inferneo serve --model meta-llama/Llama-2-7b-chat-hf --quantization squeezellm
-```
-
-## Quantization Levels
-
-### 4-bit Quantization
+SqueezeLLM offers efficient quantization with sparsity:
 
 ```python
-from inferneo import InferneoClient
+from inferneo import Inferneo
 
-client = InferneoClient("http://localhost:8000")
+# Load SqueezeLLM quantized model
+client = Inferneo("http://localhost:8000")
 
-# Use 4-bit quantized model
-response = client.completions.create(
-    model="meta-llama/Llama-2-7b-chat-hf-awq",  # AWQ quantized model
-    prompt="Explain machine learning",
-    max_tokens=100
+# Use SqueezeLLM quantized model
+response = client.generate(
+    "Explain machine learning",
+    model="meta-llama/Llama-2-7b-chat-hf-squeezellm"
 )
 ```
 
-### 8-bit Quantization
-
-```python
-# Use 8-bit quantized model
-response = client.completions.create(
-    model="meta-llama/Llama-2-7b-chat-hf-gptq",  # GPTQ quantized model
-    prompt="Explain deep learning",
-    max_tokens=100
-)
-```
-
-## Model Loading with Quantization
+## Quantization Configuration
 
 ### Server Configuration
 
+Configure quantization settings in your server configuration:
+
 ```yaml
-# config.yaml with quantization
-model: meta-llama/Llama-2-7b-chat-hf
-quantization: awq
-gpu_memory_utilization: 0.9
-max_model_len: 4096
+# config.yaml
+model:
+  name: "meta-llama/Llama-2-7b-chat-hf"
+  quantization: "awq"
+  quantization_config:
+    bits: 4
+    group_size: 128
+    zero_point: true
+    scale: true
 ```
 
-```bash
-# Start server with quantization
-inferneo serve --config config.yaml
-```
+### Dynamic Quantization
 
-### Python Client Usage
+Apply quantization dynamically at runtime:
 
 ```python
-# Connect to quantized model
-client = InferneoClient("http://localhost:8000")
+from inferneo import Inferneo
 
-# List available models
-models = client.models.list()
-print("Available models:", [model.id for model in models.data])
+client = Inferneo("http://localhost:8000")
 
-# Use quantized model
-response = client.chat.completions.create(
-    model="meta-llama/Llama-2-7b-chat-hf-awq",
-    messages=[{"role": "user", "content": "Hello!"}],
-    max_tokens=100
+# Configure quantization parameters
+client.set_quantization_config(
+    method="awq",
+    bits=4,
+    group_size=128,
+    zero_point=True,
+    scale=True
 )
+
+# Generate with quantization
+response = client.generate("Explain neural networks")
 ```
 
 ## Performance Comparison
@@ -110,393 +106,464 @@ response = client.chat.completions.create(
 ```python
 import psutil
 import time
+from inferneo import Inferneo
 
-def benchmark_memory_usage(model_id, client):
-    """Benchmark memory usage for different model configurations."""
+def benchmark_memory_usage():
+    client = Inferneo("http://localhost:8000")
     
-    # Get initial memory usage
-    initial_memory = psutil.virtual_memory().used
+    # Test different quantization methods
+    models = [
+        "meta-llama/Llama-2-7b-chat-hf",  # No quantization
+        "meta-llama/Llama-2-7b-chat-hf-awq",  # AWQ
+        "meta-llama/Llama-2-7b-chat-hf-gptq",  # GPTQ
+        "meta-llama/Llama-2-7b-chat-hf-squeezellm"  # SqueezeLLM
+    ]
     
-    # Load model and measure memory
-    start_time = time.time()
+    results = {}
     
-    response = client.completions.create(
-        model=model_id,
-        prompt="Test prompt for memory measurement",
-        max_tokens=10
-    )
+    for model in models:
+        print(f"Testing {model}...")
+        
+        # Measure memory before
+        memory_before = psutil.virtual_memory().used
+        
+        # Load model
+        start_time = time.time()
+        response = client.generate("Test prompt", model=model)
+        load_time = time.time() - start_time
+        
+        # Measure memory after
+        memory_after = psutil.virtual_memory().used
+        memory_used = memory_after - memory_before
+        
+        results[model] = {
+            "memory_mb": memory_used / (1024 * 1024),
+            "load_time": load_time
+        }
     
-    end_time = time.time()
-    final_memory = psutil.virtual_memory().used
-    
-    memory_used = final_memory - initial_memory
-    inference_time = end_time - start_time
-    
-    return {
-        "model": model_id,
-        "memory_used_mb": memory_used / (1024 * 1024),
-        "inference_time_ms": inference_time * 1000
-    }
-
-# Compare different quantization methods
-models_to_test = [
-    "meta-llama/Llama-2-7b-chat-hf",           # FP16
-    "meta-llama/Llama-2-7b-chat-hf-awq",       # AWQ 4-bit
-    "meta-llama/Llama-2-7b-chat-hf-gptq",      # GPTQ 4-bit
-    "meta-llama/Llama-2-7b-chat-hf-squeezellm" # SqueezeLLM
-]
-
-results = []
-for model_id in models_to_test:
-    try:
-        result = benchmark_memory_usage(model_id, client)
-        results.append(result)
-        print(f"Model: {result['model']}")
-        print(f"Memory: {result['memory_used_mb']:.1f} MB")
-        print(f"Time: {result['inference_time_ms']:.1f} ms")
-        print("-" * 40)
-    except Exception as e:
-        print(f"Error with {model_id}: {e}")
-```
-
-### Throughput Comparison
-
-```python
-def benchmark_throughput(model_id, client, num_requests=100):
-    """Benchmark throughput for different models."""
-    
-    prompts = [f"Test prompt {i}" for i in range(num_requests)]
-    
-    start_time = time.time()
-    
-    responses = []
-    for prompt in prompts:
-        try:
-            response = client.completions.create(
-                model=model_id,
-                prompt=prompt,
-                max_tokens=50
-            )
-            responses.append(response)
-        except Exception as e:
-            print(f"Error: {e}")
-    
-    end_time = time.time()
-    total_time = end_time - start_time
-    
-    successful_requests = len(responses)
-    throughput = successful_requests / total_time
-    
-    return {
-        "model": model_id,
-        "total_requests": num_requests,
-        "successful_requests": successful_requests,
-        "total_time": total_time,
-        "throughput_rps": throughput
-    }
-
-# Benchmark throughput
-for model_id in models_to_test:
-    try:
-        result = benchmark_throughput(model_id, client)
-        print(f"Model: {result['model']}")
-        print(f"Throughput: {result['throughput_rps']:.2f} requests/second")
-        print(f"Success rate: {result['successful_requests']}/{result['total_requests']}")
-        print("-" * 40)
-    except Exception as e:
-        print(f"Error with {model_id}: {e}")
-```
-
-## Quality Assessment
-
-### Accuracy Comparison
-
-```python
-def evaluate_quality(model_id, client, test_prompts):
-    """Evaluate quality of quantized models."""
-    
-    results = []
-    
-    for prompt in test_prompts:
-        try:
-            response = client.completions.create(
-                model=model_id,
-                prompt=prompt,
-                max_tokens=100,
-                temperature=0.7
-            )
-            
-            results.append({
-                "prompt": prompt,
-                "response": response.choices[0].text,
-                "status": "success"
-            })
-            
-        except Exception as e:
-            results.append({
-                "prompt": prompt,
-                "response": None,
-                "status": "error",
-                "error": str(e)
-            })
+    # Print results
+    print("\nMemory Usage Comparison:")
+    print("-" * 60)
+    for model, metrics in results.items():
+        print(f"{model}: {metrics['memory_mb']:.1f} MB, {metrics['load_time']:.2f}s")
     
     return results
 
-# Test prompts for quality evaluation
-test_prompts = [
-    "Explain the concept of machine learning in simple terms.",
-    "What are the main differences between supervised and unsupervised learning?",
-    "Describe the process of training a neural network.",
-    "How does backpropagation work in neural networks?",
-    "What is the role of activation functions in neural networks?"
-]
+# Run benchmark
+benchmark_memory_usage()
+```
 
-# Evaluate different models
-for model_id in models_to_test:
-    print(f"\nEvaluating {model_id}:")
-    print("=" * 50)
+### Speed vs Accuracy Trade-off
+
+```python
+from inferneo import Inferneo
+import time
+import numpy as np
+
+def benchmark_speed_accuracy():
+    client = Inferneo("http://localhost:8000")
     
-    results = evaluate_quality(model_id, client, test_prompts)
+    # Test prompts
+    test_prompts = [
+        "Explain quantum computing",
+        "What is machine learning?",
+        "Describe neural networks",
+        "How does backpropagation work?",
+        "Explain the transformer architecture"
+    ]
     
-    success_count = sum(1 for r in results if r["status"] == "success")
-    print(f"Success rate: {success_count}/{len(results)} ({success_count/len(results)*100:.1f}%)")
+    models = [
+        ("FP16", "meta-llama/Llama-2-7b-chat-hf"),
+        ("AWQ", "meta-llama/Llama-2-7b-chat-hf-awq"),
+        ("GPTQ", "meta-llama/Llama-2-7b-chat-hf-gptq")
+    ]
     
-    # Show sample responses
-    for i, result in enumerate(results[:2]):  # Show first 2 responses
-        if result["status"] == "success":
-            print(f"\nPrompt {i+1}: {result['prompt']}")
-            print(f"Response: {result['response'][:100]}...")
+    results = {}
+    
+    for model_name, model_path in models:
+        print(f"Testing {model_name}...")
+        
+        times = []
+        responses = []
+        
+        for prompt in test_prompts:
+            start_time = time.time()
+            response = client.generate(prompt, model=model_path)
+            end_time = time.time()
+            
+            times.append(end_time - start_time)
+            responses.append(response.generated_text)
+        
+        results[model_name] = {
+            "avg_time": np.mean(times),
+            "std_time": np.std(times),
+            "responses": responses
+        }
+    
+    # Print results
+    print("\nSpeed Comparison:")
+    print("-" * 40)
+    for model_name, metrics in results.items():
+        print(f"{model_name}: {metrics['avg_time']:.3f}s ± {metrics['std_time']:.3f}s")
+    
+    return results
+
+# Run benchmark
+benchmark_speed_accuracy()
 ```
 
 ## Custom Quantization
 
-### Quantization Configuration
+### Quantizing Your Own Model
 
 ```python
-# Advanced quantization settings
-quantization_config = {
-    "method": "awq",
-    "bits": 4,
-    "group_size": 128,
-    "zero_point": True,
-    "scale": True
-}
+from inferneo import Inferneo
+import torch
 
-# Use custom quantization
-response = client.completions.create(
-    model="meta-llama/Llama-2-7b-chat-hf",
-    prompt="Test prompt",
-    max_tokens=100,
-    quantization=quantization_config
+def quantize_model(model_path, output_path, method="awq"):
+    """
+    Quantize a model using the specified method.
+    """
+    client = Inferneo("http://localhost:8000")
+    
+    # Load the original model
+    print(f"Loading model from {model_path}...")
+    
+    # Configure quantization
+    quantization_config = {
+        "method": method,
+        "bits": 4,
+        "group_size": 128,
+        "zero_point": True,
+        "scale": True
+    }
+    
+    # Apply quantization
+    print(f"Applying {method} quantization...")
+    client.quantize_model(
+        model_path=model_path,
+        output_path=output_path,
+        config=quantization_config
+    )
+    
+    print(f"Quantized model saved to {output_path}")
+
+# Usage
+quantize_model(
+    model_path="./my-model",
+    output_path="./my-model-awq",
+    method="awq"
 )
 ```
 
-### Quantization Parameters
+### Quantization with Custom Parameters
 
 ```python
-# GPTQ specific parameters
-gptq_config = {
-    "method": "gptq",
-    "bits": 4,
-    "group_size": 128,
-    "desc_act": True,
-    "static_groups": False
-}
+from inferneo import Inferneo
 
-# AWQ specific parameters
-awq_config = {
-    "method": "awq",
-    "bits": 4,
-    "group_size": 128,
-    "zero_point": True,
-    "scale": True
-}
-
-# SqueezeLLM specific parameters
-squeezellm_config = {
-    "method": "squeezellm",
-    "bits": 4,
-    "group_size": 128
-}
-```
-
-## Hardware Considerations
-
-### GPU Memory Requirements
-
-```python
-def check_gpu_memory_requirements(model_id):
-    """Check GPU memory requirements for different models."""
+def custom_quantization():
+    client = Inferneo("http://localhost:8000")
     
-    # Approximate memory requirements (varies by implementation)
-    memory_requirements = {
-        "meta-llama/Llama-2-7b-chat-hf": "14 GB",           # FP16
-        "meta-llama/Llama-2-7b-chat-hf-awq": "4 GB",        # AWQ 4-bit
-        "meta-llama/Llama-2-7b-chat-hf-gptq": "4 GB",       # GPTQ 4-bit
-        "meta-llama/Llama-2-7b-chat-hf-squeezellm": "4 GB"  # SqueezeLLM 4-bit
+    # Custom AWQ configuration
+    awq_config = {
+        "method": "awq",
+        "bits": 4,
+        "group_size": 64,  # Smaller group size
+        "zero_point": True,
+        "scale": True,
+        "act_order": True,  # Activation ordering
+        "true_sequential": True
     }
     
-    return memory_requirements.get(model_id, "Unknown")
+    # Custom GPTQ configuration
+    gptq_config = {
+        "method": "gptq",
+        "bits": 4,
+        "group_size": 128,
+        "desc_act": True,
+        "static_groups": False,
+        "sym": False,  # Asymmetric quantization
+        "true_sequential": True
+    }
+    
+    # Apply custom quantization
+    client.set_quantization_config(**awq_config)
+    
+    # Test generation
+    response = client.generate("Test prompt with custom quantization")
+    print(response.generated_text)
 
-# Check requirements
-for model_id in models_to_test:
-    memory_req = check_gpu_memory_requirements(model_id)
-    print(f"{model_id}: {memory_req}")
+custom_quantization()
 ```
 
-### CPU vs GPU Quantization
+## Memory Optimization
+
+### Memory-Efficient Loading
 
 ```python
-# CPU quantization (slower but more memory efficient)
-cpu_config = {
-    "device": "cpu",
-    "quantization": "awq",
-    "bits": 4
-}
+from inferneo import Inferneo
+import gc
 
-# GPU quantization (faster but requires more memory)
-gpu_config = {
-    "device": "cuda",
-    "quantization": "awq",
-    "bits": 4
-}
+def memory_efficient_loading():
+    client = Inferneo("http://localhost:8000")
+    
+    # Configure for memory efficiency
+    client.set_config(
+        max_model_len=2048,  # Reduce context length
+        gpu_memory_utilization=0.8,  # Limit GPU memory usage
+        swap_space=4  # Enable swap space
+    )
+    
+    # Load quantized model
+    response = client.generate(
+        "Explain the benefits of quantization",
+        model="meta-llama/Llama-2-7b-chat-hf-awq"
+    )
+    
+    # Force garbage collection
+    gc.collect()
+    
+    return response
+
+# Usage
+response = memory_efficient_loading()
+```
+
+### Multi-GPU Quantization
+
+```python
+from inferneo import Inferneo
+
+def multi_gpu_quantization():
+    client = Inferneo("http://localhost:8000")
+    
+    # Configure for multi-GPU
+    client.set_config(
+        tensor_parallel_size=2,  # Use 2 GPUs
+        gpu_memory_utilization=0.7,  # Conservative memory usage
+        max_model_len=4096
+    )
+    
+    # Load large quantized model
+    response = client.generate(
+        "Write a comprehensive guide to AI",
+        model="meta-llama/Llama-2-70b-chat-hf-awq"
+    )
+    
+    return response
+
+# Usage
+response = multi_gpu_quantization()
+```
+
+## Accuracy Evaluation
+
+### Quantization Impact Assessment
+
+```python
+from inferneo import Inferneo
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+def evaluate_quantization_impact():
+    client = Inferneo("http://localhost:8000")
+    
+    # Test prompts for evaluation
+    evaluation_prompts = [
+        "Explain the concept of machine learning",
+        "What are the advantages of deep learning?",
+        "Describe the transformer architecture",
+        "How does attention mechanism work?",
+        "Explain backpropagation in neural networks"
+    ]
+    
+    # Get responses from different quantization methods
+    responses = {}
+    
+    models = [
+        ("FP16", "meta-llama/Llama-2-7b-chat-hf"),
+        ("AWQ", "meta-llama/Llama-2-7b-chat-hf-awq"),
+        ("GPTQ", "meta-llama/Llama-2-7b-chat-hf-gptq")
+    ]
+    
+    for model_name, model_path in models:
+        responses[model_name] = []
+        
+        for prompt in evaluation_prompts:
+            response = client.generate(prompt, model=model_path)
+            responses[model_name].append(response.generated_text)
+    
+    # Calculate similarity scores
+    fp16_responses = responses["FP16"]
+    
+    print("Quantization Impact Analysis:")
+    print("-" * 40)
+    
+    for model_name in ["AWQ", "GPTQ"]:
+        similarities = []
+        
+        for i in range(len(evaluation_prompts)):
+            # Simple similarity based on response length and content
+            fp16_len = len(fp16_responses[i])
+            quantized_len = len(responses[model_name][i])
+            
+            # Length similarity
+            length_sim = min(fp16_len, quantized_len) / max(fp16_len, quantized_len)
+            
+            # Content similarity (simple word overlap)
+            fp16_words = set(fp16_responses[i].lower().split())
+            quantized_words = set(responses[model_name][i].lower().split())
+            
+            if fp16_words and quantized_words:
+                content_sim = len(fp16_words & quantized_words) / len(fp16_words | quantized_words)
+            else:
+                content_sim = 0
+            
+            # Combined similarity
+            combined_sim = (length_sim + content_sim) / 2
+            similarities.append(combined_sim)
+        
+        avg_similarity = np.mean(similarities)
+        print(f"{model_name} vs FP16: {avg_similarity:.3f} similarity")
+    
+    return responses
+
+# Run evaluation
+evaluation_results = evaluate_quantization_impact()
 ```
 
 ## Best Practices
 
-### Choosing Quantization Method
+### Choosing the Right Quantization Method
+
+1. **AWQ**: Best for general use cases with good accuracy/speed balance
+2. **GPTQ**: Best for maximum accuracy preservation
+3. **SqueezeLLM**: Best for memory-constrained environments
+
+### Configuration Guidelines
 
 ```python
-def choose_quantization_method(use_case, hardware_constraints):
-    """Choose the best quantization method based on requirements."""
-    
-    recommendations = {
-        "high_accuracy": {
-            "method": "gptq",
-            "bits": 4,
-            "reason": "Best accuracy preservation"
-        },
-        "memory_constrained": {
-            "method": "awq",
-            "bits": 4,
-            "reason": "Lowest memory usage"
-        },
-        "speed_optimized": {
-            "method": "squeezellm",
-            "bits": 4,
-            "reason": "Fastest inference"
-        },
-        "balanced": {
-            "method": "awq",
-            "bits": 4,
-            "reason": "Good balance of speed and accuracy"
-        }
-    }
-    
-    return recommendations.get(use_case, recommendations["balanced"])
+# For production use
+production_config = {
+    "method": "awq",
+    "bits": 4,
+    "group_size": 128,
+    "zero_point": True,
+    "scale": True
+}
 
-# Usage examples
-print("High accuracy use case:", choose_quantization_method("high_accuracy", {}))
-print("Memory constrained:", choose_quantization_method("memory_constrained", {}))
-print("Speed optimized:", choose_quantization_method("speed_optimized", {}))
+# For development/testing
+dev_config = {
+    "method": "gptq",
+    "bits": 4,
+    "group_size": 128,
+    "desc_act": True
+}
+
+# For memory-constrained environments
+memory_constrained_config = {
+    "method": "squeezellm",
+    "bits": 4,
+    "group_size": 64
+}
 ```
 
-### Quality vs Performance Trade-offs
+### Monitoring Quantization Performance
 
 ```python
-def evaluate_trade_offs(model_id, client):
-    """Evaluate quality vs performance trade-offs."""
-    
-    # Measure performance
-    perf_result = benchmark_throughput(model_id, client, num_requests=50)
-    
-    # Measure quality
-    quality_result = evaluate_quality(model_id, client, test_prompts[:5])
-    quality_score = sum(1 for r in quality_result if r["status"] == "success") / len(quality_result)
-    
-    return {
-        "model": model_id,
-        "throughput_rps": perf_result["throughput_rps"],
-        "quality_score": quality_score,
-        "efficiency_score": perf_result["throughput_rps"] * quality_score
-    }
+import psutil
+import time
+from inferneo import Inferneo
 
-# Evaluate trade-offs
-trade_off_results = []
-for model_id in models_to_test:
-    try:
-        result = evaluate_trade_offs(model_id, client)
-        trade_off_results.append(result)
-    except Exception as e:
-        print(f"Error evaluating {model_id}: {e}")
+class QuantizationMonitor:
+    def __init__(self):
+        self.memory_history = []
+        self.latency_history = []
+    
+    def monitor_performance(self, client, prompt, model):
+        # Monitor memory
+        memory_before = psutil.virtual_memory().used
+        
+        # Measure latency
+        start_time = time.time()
+        response = client.generate(prompt, model=model)
+        latency = time.time() - start_time
+        
+        # Monitor memory after
+        memory_after = psutil.virtual_memory().used
+        memory_used = memory_after - memory_before
+        
+        # Record metrics
+        self.memory_history.append(memory_used / (1024 * 1024))  # MB
+        self.latency_history.append(latency)
+        
+        return {
+            "memory_mb": memory_used / (1024 * 1024),
+            "latency_s": latency,
+            "response_length": len(response.generated_text)
+        }
+    
+    def get_stats(self):
+        return {
+            "avg_memory_mb": np.mean(self.memory_history),
+            "avg_latency_s": np.mean(self.latency_history),
+            "total_requests": len(self.memory_history)
+        }
 
-# Sort by efficiency score
-trade_off_results.sort(key=lambda x: x["efficiency_score"], reverse=True)
+# Usage
+monitor = QuantizationMonitor()
+client = Inferneo("http://localhost:8000")
 
-print("Model Efficiency Ranking:")
-for i, result in enumerate(trade_off_results):
-    print(f"{i+1}. {result['model']}")
-    print(f"   Throughput: {result['throughput_rps']:.2f} RPS")
-    print(f"   Quality: {result['quality_score']:.2f}")
-    print(f"   Efficiency: {result['efficiency_score']:.2f}")
-    print()
+# Monitor different models
+models = [
+    "meta-llama/Llama-2-7b-chat-hf",
+    "meta-llama/Llama-2-7b-chat-hf-awq",
+    "meta-llama/Llama-2-7b-chat-hf-gptq"
+]
+
+for model in models:
+    metrics = monitor.monitor_performance(
+        client, 
+        "Test prompt", 
+        model
+    )
+    print(f"{model}: {metrics}")
+
+print(f"Overall stats: {monitor.get_stats()}")
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
+**Out of Memory Errors**
 ```python
-def troubleshoot_quantization_issues(model_id, client):
-    """Troubleshoot common quantization issues."""
-    
-    issues = []
-    
-    # Check if model loads
-    try:
-        response = client.completions.create(
-            model=model_id,
-            prompt="Test",
-            max_tokens=10
-        )
-    except Exception as e:
-        issues.append(f"Model loading failed: {e}")
-    
-    # Check memory usage
-    try:
-        import psutil
-        memory_usage = psutil.virtual_memory().percent
-        if memory_usage > 90:
-            issues.append(f"High memory usage: {memory_usage}%")
-    except:
-        pass
-    
-    # Check GPU memory
-    try:
-        import torch
-        if torch.cuda.is_available():
-            gpu_memory = torch.cuda.memory_allocated() / (1024**3)
-            if gpu_memory > 10:  # More than 10GB
-                issues.append(f"High GPU memory usage: {gpu_memory:.1f} GB")
-    except:
-        pass
-    
-    return issues
-
-# Troubleshoot issues
-for model_id in models_to_test:
-    print(f"\nTroubleshooting {model_id}:")
-    issues = troubleshoot_quantization_issues(model_id, client)
-    
-    if issues:
-        for issue in issues:
-            print(f"  - {issue}")
-    else:
-        print("  No issues detected")
+# Reduce model size or use more aggressive quantization
+client.set_config(
+    gpu_memory_utilization=0.6,  # Reduce GPU memory usage
+    max_model_len=1024  # Reduce context length
+)
 ```
 
-## Next Steps
+**Slow Performance**
+```python
+# Use faster quantization method
+client.set_quantization_config(
+    method="awq",  # Generally faster than GPTQ
+    bits=4,
+    group_size=128
+)
+```
 
-- **[Model Loading](model-loading.md)** - Learn about different model loading strategies
-- **[Performance Tuning](developer-guide/performance-tuning.md)** - Advanced optimization techniques
-- **[Hardware Optimization](developer-guide/hardware-optimization.md)** - Optimize for specific hardware 
+**Accuracy Degradation**
+```python
+# Use higher precision quantization
+client.set_quantization_config(
+    method="gptq",  # Better accuracy preservation
+    bits=4,
+    group_size=128,
+    desc_act=True
+)
+```
+
+For more advanced optimization techniques, see the Performance Tuning guide. 

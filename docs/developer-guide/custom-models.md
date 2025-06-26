@@ -39,5 +39,5 @@ gpu_memory_utilization: 0.9
 - Use the Python client or REST API to send test requests
 
 ## Next Steps
-- **[Performance Tuning](performance-tuning.md)**
+- **Performance Tuning** - Advanced optimization techniques
 - **[Contributing](contributing.md)** 
